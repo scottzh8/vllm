@@ -3736,6 +3736,8 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
         return self._dummy_pooler_run_task(hidden_states, max_task)
 
     def profile_run(self) -> None:
+        import time
+        profile_start = time.time()
         # Profile with multimodal encoder & encoder cache.
         if self.supports_mm_inputs:
             if self.model_config.multimodal_config.skip_mm_profiling:
@@ -3744,6 +3746,7 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
                     "encoder cache."
                 )
             else:
+                encoder_start = time.time()
                 mm_budget = self.mm_budget
                 assert mm_budget is not None
 
@@ -3801,6 +3804,11 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
 
                     # Cache the dummy encoder outputs.
                     self.encoder_cache["tmp"] = dict(enumerate(dummy_encoder_outputs))
+                    encoder_elapsed = time.time() - encoder_start
+                    logger.info(
+                        "Multimodal encoder execution took %.2f s",
+                        encoder_elapsed
+                    )
 
         # Add `is_profile` here to pre-allocate communication buffers
         hidden_states, last_hidden_states = self._dummy_run(
@@ -3817,6 +3825,8 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
         del hidden_states, output
         self.encoder_cache.clear()
         gc.collect()
+        profiler_elapsed = time.time() - profile_start
+        logger.info("Total profile_run time: %.2f s", profiler_elapsed)
 
     def capture_model(self) -> int:
         if self.compilation_config.cudagraph_mode == CUDAGraphMode.NONE:
